@@ -3,9 +3,11 @@ package core
 // 暴力搜索算法
 
 import (
+	"encoding/gob"
 	"errors"
 	"hh_vectordb/basic"
 	"math"
+	"os"
 	"sort"
 )
 
@@ -130,5 +132,104 @@ func (b *BruteForceSearch) Delete(vec Vector) error {
 
 	// 从切片中删除向量
 	b.data = append(b.data[:index], b.data[index+1:]...)
+	return nil
+}
+
+// InsertBatch implements the BatchOperator interface
+//
+//	@Description: 批量插入向量
+//	@receiver b
+//	@param vectors []Vector
+//	@return error
+func (b *BruteForceSearch) InsertBatch(vectors []Vector) error {
+	for _, vec := range vectors {
+		err := b.Insert(vec)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteBatch implements the BatchOperator interface
+//
+//	@Description: 批量删除向量
+//	@receiver b
+//	@param vectors []Vector
+//	@return error
+func (b *BruteForceSearch) DeleteBatch(vectors []Vector) error {
+	for _, vec := range vectors {
+		err := b.Delete(vec)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SearchWithinRange implements the RangeSearch interface for BruteForceSearch.
+//
+// @Description: Searches for vectors within a specified radius of the query vector.
+// @receiver b
+// @param query Vector - The query vector.
+// @param radius float64 - The radius within which to search.
+// @return []Vector - A slice of vectors within the specified radius.
+// @return error - An error if something goes wrong.
+func (b *BruteForceSearch) SearchWithinRange(query Vector, radius float64) ([]Vector, error) {
+	var results []Vector
+
+	for _, vec := range b.data {
+		dist := basic.EuclidDistanceVec(vec, query)
+		if dist <= radius {
+			results = append(results, vec)
+		}
+	}
+
+	if len(results) == 0 {
+		return nil, errors.New("no vectors found within the specified range")
+	}
+
+	return results, nil
+}
+
+// SaveToFile implements the Persistence interface for BruteForceSearch.
+//
+// @Description: Saves the data slice to a file.
+// @receiver b
+// @param filename string - The name of the file to save to.
+// @return error - An error if something goes wrong.
+func (b *BruteForceSearch) SaveToFile(filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := gob.NewEncoder(file)
+	if err := encoder.Encode(b.data); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// LoadFromFile implements the Persistence interface for BruteForceSearch.
+//
+// @Description: Loads the data slice from a file.
+// @receiver b
+// @param filename string - The name of the file to load from.
+// @return error - An error if something goes wrong.
+func (b *BruteForceSearch) LoadFromFile(filename string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	decoder := gob.NewDecoder(file)
+	if err := decoder.Decode(&b.data); err != nil {
+		return err
+	}
+
 	return nil
 }

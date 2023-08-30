@@ -4,9 +4,11 @@ package core
 
 import (
 	"container/heap"
+	"encoding/gob"
 	"fmt"
 	"hh_vectordb/basic"
 	"math"
+	"os"
 )
 
 type PriorityQueue = basic.PriorityQueue
@@ -301,4 +303,69 @@ func (tree *KDTree) kNearest(node *KDNode, query basic.Vector, axis, k int, pq *
 	if len(*pq) < k || math.Abs(node.Vector.Values[axis]-query.Values[axis]) < (*pq)[0].Distance {
 		tree.kNearest(otherBranch, query, (axis+1)%len(query.Values), k, pq)
 	}
+}
+
+func (tree *KDTree) InsertBatch(vectors []Vector) error {
+	for _, vec := range vectors {
+		if err := tree.Insert(vec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (tree *KDTree) DeleteBatch(vectors []Vector) error {
+	for _, vec := range vectors {
+		if err := tree.Delete(vec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (tree *KDTree) SearchWithinRange(query Vector, radius float64) ([]Vector, error) {
+	var result []Vector
+	tree.collectInRange(tree.Root, query, radius, &result)
+	return result, nil
+}
+
+func (tree *KDTree) collectInRange(node *KDNode, query Vector, radius float64, vectors *[]Vector) {
+	if node == nil {
+		return
+	}
+
+	dist := basic.EuclidDistanceVec(query, node.Vector)
+	if dist <= radius {
+		*vectors = append(*vectors, node.Vector)
+	}
+
+	if node.Vector.Values[node.Axis]-radius <= query.Values[node.Axis] {
+		tree.collectInRange(node.Left, query, radius, vectors)
+	}
+
+	if node.Vector.Values[node.Axis]+radius >= query.Values[node.Axis] {
+		tree.collectInRange(node.Right, query, radius, vectors)
+	}
+}
+
+func (tree *KDTree) SaveToFile(filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := gob.NewEncoder(file)
+	return encoder.Encode(tree.Root)
+}
+
+func (tree *KDTree) LoadFromFile(filename string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	decoder := gob.NewDecoder(file)
+	return decoder.Decode(&tree.Root)
 }

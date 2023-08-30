@@ -2,8 +2,10 @@ package core
 
 import (
 	"container/heap"
+	"encoding/gob"
 	"errors"
 	"hh_vectordb/basic"
+	"os"
 )
 
 type VectorDistance struct {
@@ -30,19 +32,19 @@ func (h *DistanceHeap) Pop() interface{} {
 }
 
 type BallTree struct {
-	center  Vector
-	radius  float64
-	left    *BallTree
-	right   *BallTree
-	isLeaf  bool
-	payload Vector
+	Center  Vector
+	Radius  float64
+	Left    *BallTree
+	Right   *BallTree
+	IsLeaf  bool
+	Payload Vector
 }
 
 func NewBallTree(vectors []Vector) *BallTree {
 	if len(vectors) == 0 || vectors == nil {
 		return &BallTree{
-			isLeaf:  true,
-			payload: Vector{},
+			IsLeaf:  true,
+			Payload: Vector{},
 		}
 	}
 
@@ -52,8 +54,8 @@ func NewBallTree(vectors []Vector) *BallTree {
 			payload = vectors[0]
 		}
 		return &BallTree{
-			isLeaf:  true,
-			payload: payload,
+			IsLeaf:  true,
+			Payload: payload,
 		}
 	}
 
@@ -66,10 +68,10 @@ func NewBallTree(vectors []Vector) *BallTree {
 	}
 
 	return &BallTree{
-		center: center,
-		radius: radius,
-		left:   NewBallTree(left),
-		right:  NewBallTree(right),
+		Center: center,
+		Radius: radius,
+		Left:   NewBallTree(left),
+		Right:  NewBallTree(right),
 	}
 }
 
@@ -132,54 +134,54 @@ func splitV1(vectors []Vector) ([]Vector, []Vector) {
 }
 
 func (tree *BallTree) Insert(vec Vector) error {
-	if tree.isLeaf && tree.payload.Values == nil { // the tree is empty
-		tree.payload = vec
+	if tree.IsLeaf && tree.Payload.Values == nil { // the tree is empty
+		tree.Payload = vec
 		return nil
 	}
 
-	if tree.isLeaf {
-		left, right := splitV1([]Vector{tree.payload, vec})
+	if tree.IsLeaf {
+		left, right := splitV1([]Vector{tree.Payload, vec})
 
 		if len(left) == 0 || len(right) == 0 {
 			// Handle case when split doesn't return valid left/right children
 			return errors.New("failed to split the vectors properly")
 		}
 
-		tree.isLeaf = false
-		tree.left = NewBallTree(nil)
-		tree.right = NewBallTree(nil)
+		tree.IsLeaf = false
+		tree.Left = NewBallTree(nil)
+		tree.Right = NewBallTree(nil)
 
-		err := tree.left.Insert(left[0])
+		err := tree.Left.Insert(left[0])
 		if err != nil {
 			return err
 		}
-		return tree.right.Insert(right[0])
+		return tree.Right.Insert(right[0])
 	}
 
-	if basic.EuclidDistanceVec(tree.center, vec) <= tree.radius {
-		if tree.left == nil {
-			tree.left = NewBallTree(nil)
+	if basic.EuclidDistanceVec(tree.Center, vec) <= tree.Radius {
+		if tree.Left == nil {
+			tree.Left = NewBallTree(nil)
 		}
-		return tree.left.Insert(vec)
+		return tree.Left.Insert(vec)
 	} else {
-		if tree.right == nil {
-			tree.right = NewBallTree(nil)
+		if tree.Right == nil {
+			tree.Right = NewBallTree(nil)
 		}
-		return tree.right.Insert(vec)
+		return tree.Right.Insert(vec)
 	}
 }
 
 func (tree *BallTree) Nearest(query Vector) (Vector, error) {
-	if tree.isLeaf {
-		return tree.payload, nil
+	if tree.IsLeaf {
+		return tree.Payload, nil
 	}
 
-	distToLeft := basic.EuclidDistanceVec(tree.left.center, query) - tree.left.radius
-	distToRight := basic.EuclidDistanceVec(tree.right.center, query) - tree.right.radius
+	distToLeft := basic.EuclidDistanceVec(tree.Left.Center, query) - tree.Left.Radius
+	distToRight := basic.EuclidDistanceVec(tree.Right.Center, query) - tree.Right.Radius
 
 	if distToLeft < distToRight {
-		closest, _ := tree.left.Nearest(query)
-		other, _ := tree.right.Nearest(query)
+		closest, _ := tree.Left.Nearest(query)
+		other, _ := tree.Right.Nearest(query)
 
 		if basic.EuclidDistanceVec(query, closest) < basic.EuclidDistanceVec(query, other) {
 			return closest, nil
@@ -187,8 +189,8 @@ func (tree *BallTree) Nearest(query Vector) (Vector, error) {
 		return other, nil
 	}
 
-	closest, _ := tree.right.Nearest(query)
-	other, _ := tree.left.Nearest(query)
+	closest, _ := tree.Right.Nearest(query)
+	other, _ := tree.Left.Nearest(query)
 
 	if basic.EuclidDistanceVec(query, closest) < basic.EuclidDistanceVec(query, other) {
 		return closest, nil
@@ -201,23 +203,23 @@ func (tree *BallTree) Vectors() ([]Vector, error) {
 		return nil, errors.New("tree is nil")
 	}
 
-	if tree.isLeaf {
-		return []Vector{tree.payload}, nil
+	if tree.IsLeaf {
+		return []Vector{tree.Payload}, nil
 	}
 
 	var leftVectors []Vector
-	if tree.left != nil {
+	if tree.Left != nil {
 		var err error
-		leftVectors, err = tree.left.Vectors()
+		leftVectors, err = tree.Left.Vectors()
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	var rightVectors []Vector
-	if tree.right != nil {
+	if tree.Right != nil {
 		var err error
-		rightVectors, err = tree.right.Vectors()
+		rightVectors, err = tree.Right.Vectors()
 		if err != nil {
 			return nil, err
 		}
@@ -232,24 +234,24 @@ func (tree *BallTree) Delete(vec Vector) error {
 	}
 
 	// Check if we're at a leaf node.
-	if tree.isLeaf {
-		if tree.payload.Equals(vec) {
+	if tree.IsLeaf {
+		if tree.Payload.Equals(vec) {
 			// This is the vector to delete.
-			tree.payload = Vector{} // Reset the payload.
-			tree.isLeaf = false     // Mark the tree as non-leaf, making it effectively empty.
+			tree.Payload = Vector{} // Reset the payload.
+			tree.IsLeaf = false     // Mark the tree as non-leaf, making it effectively empty.
 			return nil
 		}
 		return errors.New("vector not found")
 	}
 
 	// Try to delete from the left subtree.
-	err := tree.left.Delete(vec)
+	err := tree.Left.Delete(vec)
 	if err == nil {
 		return nil // If to delete was successful in the left tree, return.
 	}
 
 	// If not found in left subtree, try the right subtree.
-	err = tree.right.Delete(vec)
+	err = tree.Right.Delete(vec)
 	if err == nil {
 		return nil // If to delete was successful in the right tree, return.
 	}
@@ -281,10 +283,10 @@ func (tree *BallTree) KNearest(query Vector, k int) ([]Vector, error) {
 }
 
 func (tree *BallTree) kNearestRecursive(query Vector, k int, h *DistanceHeap) {
-	if tree.isLeaf {
-		dist := basic.EuclidDistanceVec(tree.payload, query)
+	if tree.IsLeaf {
+		dist := basic.EuclidDistanceVec(tree.Payload, query)
 		if h.Len() < k || dist < (*h)[0].dist {
-			heap.Push(h, VectorDistance{tree.payload, dist})
+			heap.Push(h, VectorDistance{tree.Payload, dist})
 		}
 		if h.Len() > k {
 			heap.Pop(h)
@@ -292,19 +294,19 @@ func (tree *BallTree) kNearestRecursive(query Vector, k int, h *DistanceHeap) {
 		return
 	}
 
-	distToLeft := basic.EuclidDistanceVec(tree.left.center, query) - tree.left.radius
-	distToRight := basic.EuclidDistanceVec(tree.right.center, query) - tree.right.radius
+	distToLeft := basic.EuclidDistanceVec(tree.Left.Center, query) - tree.Left.Radius
+	distToRight := basic.EuclidDistanceVec(tree.Right.Center, query) - tree.Right.Radius
 
 	// Recur to the closer child first
 	if distToLeft < distToRight {
-		tree.left.kNearestRecursive(query, k, h)
+		tree.Left.kNearestRecursive(query, k, h)
 		if h.Len() < k || distToRight < (*h)[0].dist {
-			tree.right.kNearestRecursive(query, k, h)
+			tree.Right.kNearestRecursive(query, k, h)
 		}
 	} else {
-		tree.right.kNearestRecursive(query, k, h)
+		tree.Right.kNearestRecursive(query, k, h)
 		if h.Len() < k || distToLeft < (*h)[0].dist {
-			tree.left.kNearestRecursive(query, k, h)
+			tree.Left.kNearestRecursive(query, k, h)
 		}
 	}
 }
@@ -392,4 +394,75 @@ func quickSelect(vectors []Vector, k int, dimension int) float64 {
 		return quickSelect(high, k-(len(vectors)-len(high)), dimension)
 	}
 	return pivot
+}
+
+func (tree *BallTree) InsertBatch(vectors []Vector) error {
+	for _, v := range vectors {
+		if err := tree.Insert(v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (tree *BallTree) DeleteBatch(vectors []Vector) error {
+	for _, v := range vectors {
+		if err := tree.Delete(v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (tree *BallTree) SearchWithinRange(query Vector, radius float64) ([]Vector, error) {
+	// For simplicity, a recursive approach is taken
+	return tree.searchInRangeRecursive(query, radius)
+}
+
+func (tree *BallTree) searchInRangeRecursive(query Vector, radius float64) ([]Vector, error) {
+	if tree == nil {
+		return nil, nil
+	}
+
+	if tree.IsLeaf {
+		if basic.EuclidDistanceVec(tree.Payload, query) <= radius {
+			return []Vector{tree.Payload}, nil
+		}
+		return nil, nil
+	}
+
+	var vectors []Vector
+	if leftVectors, _ := tree.Left.searchInRangeRecursive(query, radius); leftVectors != nil {
+		vectors = append(vectors, leftVectors...)
+	}
+
+	if rightVectors, _ := tree.Right.searchInRangeRecursive(query, radius); rightVectors != nil {
+		vectors = append(vectors, rightVectors...)
+	}
+
+	return vectors, nil
+}
+
+// SaveToFile saves the BallTree to a file.
+func (tree *BallTree) SaveToFile(filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := gob.NewEncoder(file)
+	return encoder.Encode(tree)
+}
+
+// LoadFromFile loads the BallTree from a file.
+func (tree *BallTree) LoadFromFile(filename string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	decoder := gob.NewDecoder(file)
+	return decoder.Decode(tree)
 }

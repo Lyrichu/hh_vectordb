@@ -252,3 +252,97 @@ func BenchmarkKDTreeKNearest(b *testing.B) {
 		_, _ = kdTree.KNearest(query, k)
 	}
 }
+
+func TestBatchInsertAndDelete(t *testing.T) {
+	kdTree := core.NewKDTree([]Vector{})
+
+	// BatchInsert
+	batchVecs := []Vector{
+		{0, []float64{1, 2}},
+		{1, []float64{3, 4}},
+		{2, []float64{5, 6}},
+	}
+	err := kdTree.InsertBatch(batchVecs)
+	assert.Nil(t, err)
+	// Verify insertion
+	for _, vec := range batchVecs {
+		nearestVec, _ := kdTree.Nearest(vec)
+		assert.Equal(t, vec.ID, nearestVec.ID)
+	}
+
+	// BatchDelete
+	err = kdTree.DeleteBatch(batchVecs)
+	assert.Nil(t, err)
+	resVecs, err := kdTree.Vectors()
+	assert.Nil(t, err)
+	assert.Equal(t, len(resVecs), 0)
+	// Verify deletion
+	for _, vec := range batchVecs {
+		_, err := kdTree.Nearest(vec)
+		assert.Error(t, err) // Expect error as the vector doesn't exist anymore
+	}
+}
+
+func TestRangeSearch(t *testing.T) {
+	kdTree := core.NewKDTree([]Vector{})
+	vecs := []Vector{
+		{0, []float64{2, 3}},
+		{1, []float64{5, 4}},
+		{2, []float64{6, 7}},
+	}
+	for _, v := range vecs {
+		err := kdTree.Insert(v)
+		assert.Nil(t, err)
+	}
+	query := Vector{3, []float64{2.01, 3.01}}
+	results, err := kdTree.SearchWithinRange(query, 0.1)
+
+	assert.Nil(t, err)
+	// We only expect the vector {5, 4} to be in this range
+	assert.Equal(t, 1, len(results))
+	assert.Equal(t, vecs[0].ID, results[0].ID)
+	assert.True(t, results[0].Equals(vecs[0]))
+}
+
+func TestKDTreePersistence(t *testing.T) {
+	const numVectors = 10_0000
+	const minValue = -10.0
+	const maxValue = 10.0
+	const dim = 50
+	const k = 100
+
+	// 随机生成 numVectors 个向量
+	vecs := make([]Vector, numVectors)
+	for i := 0; i < numVectors; i++ {
+		vecs[i] = basic.GenerateRandomVector(int64(i), dim, minValue, maxValue)
+	}
+
+	kdTree := &KDTree{}
+	err := kdTree.InsertBatch(vecs)
+	assert.Nil(t, err)
+	saveFilePath := "/Users/huchengchun/Downloads/hh_vec_db_save01"
+	err = kdTree.SaveToFile(saveFilePath)
+	assert.Nil(t, err)
+
+	kdTree = &KDTree{}
+	err = kdTree.LoadFromFile(saveFilePath)
+	assert.Nil(t, err)
+
+	// 随机选择一个查询向量
+	query := basic.GenerateRandomVector(int64(numVectors), dim, minValue, maxValue)
+
+	// 使用 KNearest 查询
+	result, err := kdTree.KNearest(query, k)
+	assert.Nil(t, err)
+
+	// 使用暴力方法找到最近的 k 个向量
+	bs := core.NewBruteForceSearch(vecs)
+	expected, err := bs.KNearest(query, k)
+	assert.Nil(t, err)
+
+	// 验证 KNearest 的结果
+	for i, vec := range result {
+		assert.Equal(t, expected[i].ID, vec.ID)
+	}
+
+}

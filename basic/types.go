@@ -11,6 +11,8 @@ type Vector struct {
 	Values []float64
 }
 
+type VectorSet map[string]struct{}
+
 const epsilon = 1e-9
 
 func (v Vector) Equals(other Vector) bool {
@@ -29,12 +31,45 @@ func floatEquals(a, b float64) bool {
 	return math.Abs(a-b) < epsilon
 }
 
-func (v Vector) String() string {
+func ToSet(vectors []Vector, includeId bool) VectorSet {
+	set := make(VectorSet)
+	for _, v := range vectors {
+		set[v.String(includeId)] = struct{}{}
+	}
+	return set
+}
+
+func TwoVectorArrIntersectionRatio(vectors1, vectors2 []Vector, includeId bool) float64 {
+	set1 := ToSet(vectors1, includeId)
+	set2 := ToSet(vectors2, includeId)
+
+	intersectionCount := 0
+	for k := range set1 {
+		if _, found := set2[k]; found {
+			intersectionCount++
+		}
+	}
+
+	totalUniqueVectors := len(set1) + len(set2) - intersectionCount
+
+	if totalUniqueVectors == 0 {
+		return 0.0
+	}
+
+	return float64(intersectionCount) / float64(totalUniqueVectors)
+}
+
+func (v Vector) String(includeId bool) string {
 	stringValues := make([]string, len(v.Values))
 	for i, value := range v.Values {
 		stringValues[i] = fmt.Sprintf("%.2f", value) // 我们选择保留两位小数，但这可以根据需要进行调整
 	}
-	return fmt.Sprintf("Vector{ID:%v,Values:[%v]}", v.ID, strings.Join(stringValues, ", "))
+	if includeId {
+		return fmt.Sprintf("Vector{ID:%v,Values:[%v]}", v.ID, strings.Join(stringValues, ", "))
+	} else {
+		return fmt.Sprintf("Vector{Values:[%v]}", strings.Join(stringValues, ", "))
+	}
+
 }
 
 type Item struct {
