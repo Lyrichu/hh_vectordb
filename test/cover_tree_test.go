@@ -277,3 +277,117 @@ func BenchmarkCoverTreeKNearest(b *testing.B) {
 		_, _ = coverTree.KNearest(query, k)
 	}
 }
+
+func TestCoverTreeInsertBatch(t *testing.T) {
+	coverTree := core.NewCoverTree(1.1)
+	vecs := []Vector{
+		basic.GenerateRandomVector(0, 4, 1.0, 5.0),
+		basic.GenerateRandomVector(1, 4, 1.0, 5.0),
+		basic.GenerateRandomVector(2, 4, 1.0, 5.0),
+	}
+	err := coverTree.InsertBatch(vecs)
+	assert.Nil(t, err)
+	resVecs, err := coverTree.Vectors()
+	assert.Nil(t, err)
+	assert.Equal(t, len(resVecs), len(vecs))
+}
+
+func TestCoverTreeDeleteBatch(t *testing.T) {
+	vecs := []Vector{
+		{
+			0,
+			[]float64{2, 3},
+		},
+		{
+			1,
+			[]float64{5, 4},
+		},
+		{
+			2,
+			[]float64{9, 6},
+		},
+	}
+	coverTree := core.NewCoverTree(1.2)
+	err := coverTree.InsertBatch(vecs)
+	assert.Nil(t, err)
+	err = coverTree.DeleteBatch([]Vector{vecs[0], vecs[2]})
+	assert.Nil(t, err)
+	resVecs, err := coverTree.Vectors()
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(resVecs))
+}
+
+func TestCoverTreeInRange(t *testing.T) {
+	vecs := []Vector{
+		{
+			0,
+			[]float64{2, 3},
+		},
+		{
+			1,
+			[]float64{5, 4},
+		},
+		{
+			2,
+			[]float64{9, 6},
+		},
+	}
+	coverTree := core.NewCoverTree(1.1)
+	err := coverTree.InsertBatch(vecs)
+	assert.Nil(t, err)
+	centerVec := Vector{
+		99,
+		[]float64{5, 5},
+	}
+	radius := 3.0
+	resultVecs, err := coverTree.SearchWithinRange(centerVec, radius)
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(resultVecs))
+	assert.True(t, basic.VectorExistsInSlice(resultVecs[0], vecs))
+	assert.True(t, resultVecs[0].Equals(vecs[1]))
+}
+
+func TestCoverTreePersistence(t *testing.T) {
+	const numVectors = 100_0000
+	const minValue = -10.0
+	const maxValue = 10.0
+	const dim = 50
+	const k = 1000
+
+	// 随机生成 numVectors 个向量
+	vecs := make([]Vector, numVectors)
+	for i := 0; i < numVectors; i++ {
+		vecs[i] = basic.GenerateRandomVector(int64(i), dim, minValue, maxValue)
+	}
+	saveFilePath := "/Users/huchengchun/Downloads/hh_vec_db_save01"
+	coverTree := core.NewCoverTree(1.1)
+	err := coverTree.InsertBatch(vecs)
+	assert.Nil(t, err)
+	resVecs, err := coverTree.Vectors()
+	assert.Equal(t, len(resVecs), len(vecs))
+	err = coverTree.SaveToFile(saveFilePath)
+	assert.Nil(t, err)
+	coverTree = core.NewCoverTree(1.1)
+	err = coverTree.LoadFromFile(saveFilePath)
+	assert.Nil(t, err)
+
+	// 随机选择一个查询向量
+	query := basic.GenerateRandomVector(int64(numVectors), dim, minValue, maxValue)
+
+	// 使用 KNearest 查询
+	result, err := coverTree.KNearest(query, k)
+	assert.Nil(t, err)
+
+	// 使用暴力方法找到最近的 k 个向量
+	bs := core.NewBruteForceSearch(vecs)
+	expected, err := bs.KNearest(query, k)
+	assert.Nil(t, err)
+
+	ratio := basic.TwoVectorArrIntersectionRatio(result, expected, false)
+	fmt.Println(ratio)
+	fmt.Println("Compare Brute-Force/Cover-Tree Results:")
+	for i, vec := range result {
+		fmt.Printf("coverTree:%v,%v -- bruteForce:%v,%v\n", vec.ID, basic.EuclidDistanceVec(query, vec),
+			expected[i].ID, basic.EuclidDistanceVec(query, expected[i]))
+	}
+}

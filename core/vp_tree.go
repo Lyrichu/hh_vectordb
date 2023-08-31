@@ -2,19 +2,21 @@ package core
 
 import (
 	"container/heap"
+	"encoding/gob"
 	"errors"
 	"hh_vectordb/basic"
+	"os"
 )
 
 type VPNode struct {
-	vantagePoint Vector
-	mu           float64
-	left         *VPNode
-	right        *VPNode
+	VantagePoint Vector
+	Mu           float64
+	Left         *VPNode
+	Right        *VPNode
 }
 
 type VPTree struct {
-	root *VPNode
+	Root *VPNode
 }
 
 type VPItem struct {
@@ -47,7 +49,7 @@ func (pq *VPPriorityQueue) Pop() interface{} {
 
 func NewVPTree(vectors []Vector) *VPTree {
 	tree := &VPTree{}
-	tree.root = tree.buildVPTree(vectors)
+	tree.Root = tree.buildVPTree(vectors)
 	return tree
 }
 
@@ -58,7 +60,7 @@ func (tree *VPTree) buildVPTree(vectors []Vector) *VPNode {
 
 	vp := vectors[0] // For simplicity, choose the first point as the vantage point
 	if len(vectors) == 1 {
-		return &VPNode{vantagePoint: vp}
+		return &VPNode{VantagePoint: vp}
 	}
 
 	// Calculate the median distance from the vantage point to all other points
@@ -80,10 +82,10 @@ func (tree *VPTree) buildVPTree(vectors []Vector) *VPNode {
 	}
 
 	return &VPNode{
-		vantagePoint: vp,
-		mu:           mu,
-		left:         tree.buildVPTree(leftSet),
-		right:        tree.buildVPTree(rightSet),
+		VantagePoint: vp,
+		Mu:           mu,
+		Left:         tree.buildVPTree(leftSet),
+		Right:        tree.buildVPTree(rightSet),
 	}
 }
 
@@ -97,18 +99,18 @@ func (tree *VPTree) Nearest(query Vector) (Vector, error) {
 }
 
 func (tree *VPTree) Insert(vec Vector) error {
-	tree.root = tree.insertRecursive(tree.root, vec)
+	tree.Root = tree.insertRecursive(tree.Root, vec)
 	return nil
 }
 
 func (tree *VPTree) insertRecursive(vpNode *VPNode, vec Vector) *VPNode {
 	if vpNode == nil {
-		return &VPNode{vantagePoint: vec}
+		return &VPNode{VantagePoint: vec}
 	}
-	if basic.EuclidDistanceVec(vec, vpNode.vantagePoint) < vpNode.mu {
-		vpNode.left = tree.insertRecursive(vpNode.left, vec)
+	if basic.EuclidDistanceVec(vec, vpNode.VantagePoint) < vpNode.Mu {
+		vpNode.Left = tree.insertRecursive(vpNode.Left, vec)
 	} else {
-		vpNode.right = tree.insertRecursive(vpNode.right, vec)
+		vpNode.Right = tree.insertRecursive(vpNode.Right, vec)
 	}
 	return vpNode
 }
@@ -117,7 +119,7 @@ func (tree *VPTree) KNearest(query Vector, k int) ([]Vector, error) {
 	pq := make(VPPriorityQueue, 0, k)
 	heap.Init(&pq)
 
-	tree.kNearestRecursive(tree.root, query, k, &pq)
+	tree.kNearestRecursive(tree.Root, query, k, &pq)
 
 	results := make([]Vector, len(pq))
 	for i := len(pq) - 1; i >= 0; i-- {
@@ -132,25 +134,25 @@ func (tree *VPTree) kNearestRecursive(VPNode *VPNode, query Vector, k int, pq *V
 		return
 	}
 
-	d := basic.EuclidDistanceVec(query, VPNode.vantagePoint)
+	d := basic.EuclidDistanceVec(query, VPNode.VantagePoint)
 
 	// Check if the current node's vector is closer than the furthest found so far
 	if len(*pq) < k || d < (*pq)[0].priority {
 		if len(*pq) == k {
 			heap.Pop(pq)
 		}
-		heap.Push(pq, &VPItem{value: VPNode.vantagePoint, priority: d})
+		heap.Push(pq, &VPItem{value: VPNode.VantagePoint, priority: d})
 	}
 
-	if d < VPNode.mu {
-		tree.kNearestRecursive(VPNode.left, query, k, pq)
-		if len(*pq) < k || d+VPNode.mu <= (*pq)[0].priority {
-			tree.kNearestRecursive(VPNode.right, query, k, pq)
+	if d < VPNode.Mu {
+		tree.kNearestRecursive(VPNode.Left, query, k, pq)
+		if len(*pq) < k || d+VPNode.Mu <= (*pq)[0].priority {
+			tree.kNearestRecursive(VPNode.Right, query, k, pq)
 		}
 	} else {
-		tree.kNearestRecursive(VPNode.right, query, k, pq)
-		if len(*pq) < k || d-VPNode.mu <= (*pq)[0].priority {
-			tree.kNearestRecursive(VPNode.left, query, k, pq)
+		tree.kNearestRecursive(VPNode.Right, query, k, pq)
+		if len(*pq) < k || d-VPNode.Mu <= (*pq)[0].priority {
+			tree.kNearestRecursive(VPNode.Left, query, k, pq)
 		}
 	}
 
@@ -158,7 +160,7 @@ func (tree *VPTree) kNearestRecursive(VPNode *VPNode, query Vector, k int, pq *V
 
 func (tree *VPTree) Vectors() ([]Vector, error) {
 	vectors := make([]Vector, 0)
-	tree.inOrderTraversal(tree.root, &vectors)
+	tree.inOrderTraversal(tree.Root, &vectors)
 	return vectors, nil
 }
 
@@ -166,14 +168,14 @@ func (tree *VPTree) inOrderTraversal(VPNode *VPNode, vectors *[]Vector) {
 	if VPNode == nil {
 		return
 	}
-	tree.inOrderTraversal(VPNode.left, vectors)
-	*vectors = append(*vectors, VPNode.vantagePoint)
-	tree.inOrderTraversal(VPNode.right, vectors)
+	tree.inOrderTraversal(VPNode.Left, vectors)
+	*vectors = append(*vectors, VPNode.VantagePoint)
+	tree.inOrderTraversal(VPNode.Right, vectors)
 }
 
 func (tree *VPTree) Delete(vec Vector) error {
 	success := false
-	tree.root, success = tree.deleteRecursive(tree.root, vec)
+	tree.Root, success = tree.deleteRecursive(tree.Root, vec)
 	if !success {
 		return errors.New("vector not found")
 	}
@@ -185,45 +187,114 @@ func (tree *VPTree) deleteRecursive(VPNode *VPNode, vec Vector) (*VPNode, bool) 
 		return nil, false
 	}
 
-	// If the current node is the target
-	if VPNode.vantagePoint.Equals(vec) {
-		// Node with only right child or no child
-		if VPNode.left == nil {
-			temp := VPNode.right
-			VPNode = nil
-			return temp, true
-		} else if VPNode.right == nil { // Node with only left child
-			temp := VPNode.left
-			VPNode = nil
-			return temp, true
+	if VPNode.VantagePoint.Equals(vec) {
+		vectors, _ := tree.subTreeVectors(VPNode) // Collect all vectors from the subtree
+		for i, v := range vectors {
+			if v.Equals(vec) {
+				// Remove the vector from the slice
+				vectors = append(vectors[:i], vectors[i+1:]...)
+				break
+			}
 		}
-
-		// Node with two children
-		// Get the inorder predecessor (rightmost node in left subtree)
-		temp, _ := tree.findMax(VPNode.left)
-		VPNode.vantagePoint = temp
-		// Delete the inorder predecessor
-		VPNode.left, _ = tree.deleteRecursive(VPNode.left, temp)
+		return tree.buildVPTree(vectors), true // Rebuild the subtree
 	} else {
-		// If the vector to be deleted is smaller than the VPNode's
-		// vector, then it lies in left subtree
-		if basic.EuclidDistanceVec(VPNode.vantagePoint, vec) < VPNode.mu {
-			VPNode.left, _ = tree.deleteRecursive(VPNode.left, vec)
+		if basic.EuclidDistanceVec(VPNode.VantagePoint, vec) < VPNode.Mu {
+			VPNode.Left, _ = tree.deleteRecursive(VPNode.Left, vec)
 		} else {
-			// Else it lies in right subtree
-			VPNode.right, _ = tree.deleteRecursive(VPNode.right, vec)
+			VPNode.Right, _ = tree.deleteRecursive(VPNode.Right, vec)
 		}
 	}
 
 	return VPNode, true
 }
 
+func (tree *VPTree) subTreeVectors(VPNode *VPNode) ([]Vector, error) {
+	vectors := make([]Vector, 0)
+	tree.inOrderTraversal(VPNode, &vectors)
+	return vectors, nil
+}
+
 func (tree *VPTree) findMax(VPNode *VPNode) (Vector, bool) {
 	if VPNode == nil {
 		return Vector{}, false
 	}
-	if VPNode.right != nil {
-		return tree.findMax(VPNode.right)
+	if VPNode.Right != nil {
+		return tree.findMax(VPNode.Right)
 	}
-	return VPNode.vantagePoint, true
+	return VPNode.VantagePoint, true
+}
+
+func (tree *VPTree) InsertBatch(vectors []Vector) error {
+	for _, vec := range vectors {
+		if err := tree.Insert(vec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (tree *VPTree) DeleteBatch(vectors []Vector) error {
+	for _, vec := range vectors {
+		if err := tree.Delete(vec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (tree *VPTree) SearchWithinRange(query Vector, radius float64) ([]Vector, error) {
+	var results []Vector
+	tree.rangeSearchRecursive(tree.Root, query, radius, &results)
+	return results, nil
+}
+
+func (tree *VPTree) rangeSearchRecursive(node *VPNode, query Vector, radius float64, results *[]Vector) {
+	if node == nil {
+		return
+	}
+
+	d := basic.EuclidDistanceVec(query, node.VantagePoint)
+
+	if d <= radius {
+		*results = append(*results, node.VantagePoint)
+	}
+
+	if d-radius < node.Mu {
+		tree.rangeSearchRecursive(node.Left, query, radius, results)
+	}
+	if d+radius >= node.Mu {
+		tree.rangeSearchRecursive(node.Right, query, radius, results)
+	}
+}
+
+func (tree *VPTree) SaveToFile(filename string) error {
+	// Note: This is a simple serialization implementation using encoding/gob.
+	// Depending on the exact requirements, you might want a different serialization mechanism.
+	dataFile, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer dataFile.Close()
+
+	dataEncoder := gob.NewEncoder(dataFile)
+	err = dataEncoder.Encode(tree)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (tree *VPTree) LoadFromFile(filename string) error {
+	dataFile, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer dataFile.Close()
+
+	dataDecoder := gob.NewDecoder(dataFile)
+	err = dataDecoder.Decode(tree)
+	if err != nil {
+		return err
+	}
+	return nil
 }

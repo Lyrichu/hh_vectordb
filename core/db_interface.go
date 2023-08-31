@@ -16,6 +16,10 @@ type NearestNeighborSearch interface {
 	Vectors() ([]Vector, error)
 	// Delete 删除
 	Delete(vec Vector) error
+
+	BatchOperator
+	RangeSearch
+	Persistence
 }
 
 // BatchOperator 批量操作
