@@ -181,10 +181,10 @@ func TestBruteForceVectors(t *testing.T) {
 }
 
 func BenchmarkBruteForceKNearest(b *testing.B) {
-	const numVectors = 100_0000
+	const numVectors = 500_0000
 	const minValue = -10.0
 	const maxValue = 10.0
-	const dim = 50
+	const dim = 20
 	const k = 100
 
 	// 随机生成 numVectors 个向量
